@@ -1,0 +1,1 @@
+调用indicator.py即运行命令python indicator.py查看输出的指标， 根据指标去优化代码，使得里面的所有指标尽量低（优秀）
