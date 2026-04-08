@@ -154,4 +154,11 @@ app.get('/api/stream/:runId', (req, res) => {
   show.on('error', err => { send('error', err.message); res.end(); cleanup(); });
 });
 
-app.listen(PORT, () => console.log(`DAN Web → http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  const interfaces = Object.values(require('os').networkInterfaces())
+    .flat()
+    .filter(i => i.family === 'IPv4' && !i.internal)
+    .map(i => i.address);
+  console.log(`DAN Web → http://localhost:${PORT}`);
+  if (interfaces.length) console.log(`         → http://${interfaces[0]}:${PORT}`);
+});
