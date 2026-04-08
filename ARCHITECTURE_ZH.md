@@ -1,161 +1,172 @@
 # DAN — Deep Agent Network 架构文档
 
-> 基于 LLM Agent 的闭环优化框架
+> 广义的端到端学习框架，无需梯度。
 
 ---
 
-## 1. 框架哲学 | Framework Philosophy
+## 核心类比：DAN ≋ 深度学习
 
-DAN 将所有优化任务定义为一个**四元闭环系统**：
+| DAN 组件 | 深度学习对应 | 本质 |
+|---------|------------|------|
+| **META** | 超参（lr, batch_size, optimizer...） | 框架级配置，与具体任务无关，控制优化动力学 |
+| **HEURISTIC** | 先验/归纳偏置（CNN/RNN/Attention 结构） | 结构假设——"用什么形状的函数去拟合"的先验选择 |
+| **PARAM** | 权重参数 W | 广义的被优化变量——代码、系数、配置、任意可调数据 |
+| **LOSS** | Loss Function | 可衡量的优化目标 |
+
+类比的内核：
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│   PARAM  ──(调整)──→  LOSS  ──(反馈)──→                │
-│     ↑                                    HEURISTIC      │
-│     │                                         │         │
-│     └──(决策)───────────────────────────────┘         │
-│                         ↑                               │
-│                       META                              │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+深度学习:                     DAN（广义化）:
+────────────────────────────────────────────────────────
+HEURISTIC  ── 架构设计 ──→    搜索空间结构（先验选择）
+META       ── 超参数   ──→    优化动力学配置
+PARAM      ── 权重 W   ──→    被优化的广义参数
+LOSS       ── 损失    ──→    反馈信号
+────────────────────────────────────────────────────────
+训练循环:                     结构相同，无梯度
 ```
 
-循环迭代运行，直至收敛条件满足，**全程无梯度依赖**。
+DAN 是深度学习的**无梯度版本**——同样的概念循环，不同的 PARAM 更新机制。
 
 ---
 
-## 2. 四元核心组件 | Four Core Components
+## 1. 四元核心组件
 
-| 组件 | 职责 | 描述 |
-|------|------|------|
-| **META** | 目标定义 | 任务目标、背景、评估上下文 |
-| **HEURISTIC** | 搜索策略 | 如何调整 PARAM、如何判断终止、如何评价进展 |
-| **PARAM** | 优化主体 | 被调优的实体——代码、系数、权重、配置等 |
-| **LOSS** | 反馈信号 | 衡量当前状态与 META 差距的定量指标 |
+### 1.1 META — 框架配置（≈ 超参数）
 
-### 2.1 META — 目标定义层
-
-定义任务**是什么**。通常为自然语言描述，存放于 `loss/target.md` 或类似元数据文件。
+与具体任务无关的设置，控制**如何**进行优化。
 
 ```
-loss/
-└── target.md          # 任务目标描述
-    └── target/        #（可选）结构化数据资产（如散点数据 CSV）
+META = {
+    "optimization_method": "manual",   # 搜索方式
+    "max_iterations": 5,              # 停止条件
+    "evaluation_metric": "multi_dim", # 损失类型
+    ...
+}
 ```
 
-### 2.2 HEURISTIC — 搜索策略层
+META 决定搜索的**行为方式**（如何搜），HEURISTIC 决定搜索**空间的结构**（搜什么形状）。
 
-定义任务**怎么做**。存放于 `heuristic/rule.md`——一组约束条件和策略规则，**任务相关且不可迁移**。
+### 1.2 HEURISTIC — 结构先验（≈ 归纳偏置）
 
-```
-heuristic/
-└── rule.md            # 搜索规则与约束条件
-```
+定义**归纳偏置**——关于在什么形状的解空间中搜索的结构性假设。
 
-### 2.3 PARAM — 优化主体层
-
-**被优化的实体**，每次迭代中实际被修改的部分。
+正如 CNN 编码空间局部性先验、RNN 编码时序依赖先验，DAN HEURISTIC 编码任务相关的结构知识：
 
 ```
-param/
-└── xxx                # 可为 .py 代码、.md 方程、.json 配置等任意形式
+HEURISTIC 编码的先验例如：
+- "使用类封装"（先验：代码应该是面向对象的）
+- "手动调参"（先验：人参与搜索过程）
+- "最小化圈复杂度"（先验：更简单的控制流更好）
 ```
 
-### 2.4 LOSS — 损失评估层
+### 1.3 PARAM — 优化目标（≈ 权重 W）
 
-**目标函数**——产生驱动 HEURISTIC 决策的反馈信号。
-
-```
-loss/
-├── indicator.py       # 评估脚本 / 指标计算
-└── target.md          # 目标描述
-```
-
----
-
-## 3. 闭环工作流 | Closed-Loop Workflow
+**广义的被优化参数**——任何可以被修改并重新评估的实体。深度学习中 PARAM 只能是数值张量，而这里可以是：
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                      迭代循环                           │
-├────────────────────────────────────────────────────────┤
-│                                                        │
-│  1. READ META          读取任务目标与约束               │
-│          ↓                                               │
-│  2. READ PARAM         加载当前参数状态                 │
-│          ↓                                               │
-│  3. CALCULATE LOSS     运行评估脚本获取反馈             │
-│          ↓                                               │
-│  4. APPLY HEURISTIC    根据规则决定如何调整             │
-│          ↓                                               │
-│  5. UPDATE PARAM       执行修改                         │
-│          ↓                                               │
-│  6. CHECK STOP CRITERIA  → 若未完成，返回步骤 3        │
-│                                                        │
-└────────────────────────────────────────────────────────┘
+PARAM ∈ { 代码, 系数, 配置文件, prompt, 超参数设置, ... }
+```
+
+### 1.4 LOSS — 目标函数（≈ Loss）
+
+可量化的反馈信号，衡量当前状态距离 META 定义目标的距离。深度学习中 LOSS 驱动梯度计算，DAN 中 LOSS 驱动 HEURISTIC 引导的搜索。
+
+```
+LOSS: PARAM → ℝⁿ    (n维反馈向量)
 ```
 
 ---
 
-## 4. 任务实例 | Task Instances
+## 2. 形式化定义
+
+```
+DAN Task := (META, HEURISTIC, PARAM₀, LOSS)
+
+其中:
+  META      : 框架配置（任务无关）
+  HEURISTIC : 结构先验（决定搜索空间形状）
+  PARAM₀    : 初始参数状态
+  LOSS      : Param → ℝⁿ  (反馈信号)
+
+第 i 次迭代:
+  feedback  = LOSS(PARAMᵢ)
+  PARAMᵢ₊₁ = HEURISTIC(PARAMᵢ, feedback, META)
+  终止条件:  convergence(PARAMᵢ, PARAMᵢ₊₁, META)
+            OR iteration_limit(META) reached
+```
+
+---
+
+## 3. 闭环工作流
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      DAN 优化循环                            │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  META 包含: max_iterations, stopping_criteria 等           │
+│  HEURISTIC 包含: 搜索规则、先验知识、约束条件               │
+│                                                              │
+│  1. READ HEURISTIC        加载结构先验与规则                 │
+│          ↓                                                     │
+│  2. READ META             加载框架配置                       │
+│          ↓                                                     │
+│  3. READ PARAMᵢ           加载当前参数状态                 │
+│          ↓                                                     │
+│  4. COMPUTE LOSS(PARAMᵢ)  计算反馈信号                     │
+│          ↓                                                     │
+│  5. APPLY HEURISTIC       根据先验决定调整策略              │
+│          ↓                                                     │
+│  6. UPDATE PARAM           修改 PARAM → PARAMᵢ₊₁           │
+│          ↓                                                     │
+│  7. CHECK META criteria    → 若未完成，返回步骤 4           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. 任务实例
 
 ### 4.1 01_LinearFunFit — 数值系数拟合
 
 ```
-demo/01_LinearFunFit/
-├── META/loss/target/my_scatter.csv    # 散点数据
-├── HEURISTIC/heuristic/rule.md       # 手动调参，最多比较5次
-├── PARAM/param/func.md               # y = ax + b ; y = ax² + bx + c
-└── LOSS/ (散点对比误差)               # Loss = Σ(y_pred - y_actual)²
+META:
+  max_evaluations: 5
+  optimization_method: manual
+HEURISTIC:
+  - "手动调整 a, b, c 系数"
+  - "计算第二个式子时不允许参考第一个式子的结果"
+PARAM:  y = ax + b ; y = ax² + bx + c  (系数 a, b, c)
+LOSS:   Σ(y_pred - y_actual)²  (散点拟合误差)
 ```
 
 ### 4.2 02_CodeOptimize — 代码质量优化
 
 ```
-demo/02_CodeOptimize/
-├── META/loss/target.md               # 目标：所有指标尽量低
-├── HEURISTIC/heuristic/rule.md      # 禁止自动脚本，代码改动≤1000行
-├── PARAM/param/demo.py               # 待优化的电商订单系统代码
-└── LOSS/loss/indicator.py            # 圈复杂度、Halstead 复杂度、MI 等
+META:
+  max_loc_delta: 1000
+  optimization_method: manual（禁止自动化脚本）
+HEURISTIC:
+  - "最小化圈复杂度"
+  - "减少重复代码"
+  - "优先使用封装而非全局状态"
+PARAM:  Python 源代码（电商订单系统）
+LOSS:   (cyclomatic_complexity, halstead_difficulty, mi, duplicate_rate)
 ```
 
 ---
 
-## 5. 形式化定义 | Formal Specification
+## 5. 为什么是这个抽象？
 
-DAN 任务定义为一个四元组：
-
-```
-Task := (META, HEURISTIC, PARAM₀, LOSS)
-
-其中:
-  META      : 自然语言目标描述
-  HEURISTIC : 约束条件 + 搜索规则集合
-  PARAM₀    : 初始参数状态
-  LOSS      : 函数 → ℝⁿ  (n维反馈向量)
-
-第 i 次迭代:
-  PARAMᵢ₊₁ = HEURISTIC(PARAMᵢ, LOSS(PARAMᵢ))
-  终止条件:  LOSS(PARAMᵢ₊₁) 满足 META 标准
-            或 达到迭代次数上限
-```
+| 性质 | DL 类比 | DAN 优势 |
+|------|--------|---------|
+| **无梯度** | — | 适用于不可导的 PARAM（代码、离散结构） |
+| **可解释的先验** | 架构设计 | HEURISTIC 是显式的人类知识，不藏在超参数里 |
+| **广义的 PARAM** | 权重 W | 可优化任意文件/数据，不只是数值张量 |
+| **灵活的 LOSS** | 损失函数 | 任意可量化指标，单目标或多目标均可 |
 
 ---
 
-## 6. 新建任务 | Creating a New Task
-
-```bash
-cp -r demo/02_CodeOptimize demo/03_YourTask
-# 然后编辑:
-#   - META:      demo/03_YourTask/loss/target.md
-#   - HEURISTIC: demo/03_YourTask/heuristic/rule.md
-#   - PARAM:     demo/03_YourTask/param/your_param
-#   - LOSS:      demo/03_YourTask/loss/indicator.py（如有需要）
-```
-
-Agent 将遵循相同的 读取→评估→调整 循环，无需修改框架。
-
----
-
-*为 LLM Agent 构建的结构化、可解释、无梯度优化框架。*
+*为 LLM Agent 打造的广义端到端学习框架——与神经网络训练结构相同，但无需梯度。*

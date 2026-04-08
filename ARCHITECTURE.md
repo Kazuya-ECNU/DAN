@@ -1,173 +1,170 @@
 # DAN — Deep Agent Network
 
-> A closed-loop optimization framework powered by LLM agents.
+> A generalized end-to-end learning framework, without gradients.
 
 ---
 
-## 1. Framework Philosophy | 框架哲学
+## Core Analogy: DAN ≋ Deep Learning
 
-DAN defines all optimization tasks as a **four-element closed-loop system**:
+| DAN Component | Deep Learning Equivalent | Nature |
+|--------------|------------------------|--------|
+| **META** | Hyperparameters (lr, batch_size, optimizer...) | Task-agnostic framework config; controls optimization dynamics |
+| **HEURISTIC** | Priors / Inductive Biases (CNN/RNN/Attention) | Structural assumption — "what shape of function to use" |
+| **PARAM** | Weights W | Generalized optimizable entity — code, coefficients, configs, any adjustable data |
+| **LOSS** | Loss Function | Quantifiable optimization objective |
+
+The analogy runs deeper than metaphor:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│   PARAM  ──(adjust)──→  LOSS  ──(feedback)──→           │
-│     ↑                                    HEURISTIC      │
-│     │                                         │         │
-│     └──(decision)────────────────────────────┘         │
-│                         ↑                               │
-│                       META                              │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+Deep Learning:                    DAN (Generalized):
+─────────────────────────────────────────────────────
+HEURISTIC   ── architecture ──→  search space structure
+META        ── hyperparams   ──→  optimization dynamics
+PARAM       ── weights W     ──→  the thing being fitted
+LOSS        ── loss          ──→  feedback signal
+─────────────────────────────────────────────────────
+Training loop:                   Same structure, no gradient
 ```
 
-The loop runs iteratively until convergence criteria are met, **without relying on gradient-based methods**.
+DAN is to Deep Learning what **gradient-free optimization** is to **gradient-based learning** — same conceptual loop, different mechanism for updating PARAM.
 
 ---
 
-## 2. Four Core Components | 四元核心组件
+## 1. Four Core Components
 
-| Component | Role | Description |
-|-----------|------|-------------|
-| **META** | Goal definition | Target description, evaluation context, task background |
-| **HEURISTIC** | Search strategy | Rules governing how PARAM is adjusted, when to stop, how to evaluate progress |
-| **PARAM** | Optimization subject | The entity being tuned — code, numerical coefficients, model weights, etc. |
-| **LOSS** | Feedback signal | Quantitative metric(s) measuring distance from META |
+### 1.1 META — Framework Configuration (≈ Hyperparameters)
 
-### 2.1 META
-
-Defines **what** the task is. Typically a natural language description stored in `loss/target.md` or similar metadata files.
+Task-agnostic settings that control **how** optimization proceeds, independent of the specific task.
 
 ```
-loss/
-└── target.md          # Task goal description
-    └── target/         # (optional) Structured data assets (e.g., scatter.csv)
+META = {
+    "optimization_method": "manual",   # how to search the space
+    "max_iterations": 5,              # stopping criterion
+    "evaluation_metric": "multi_dim", # scalar or vector loss
+    ...
+}
 ```
 
-### 2.2 HEURISTIC
+Unlike HEURISTIC which shapes *what* the search space looks like, META shapes *how* the search behaves.
 
-Defines **how** to search. Stored in `heuristic/rule.md` — a set of constraints and strategies the agent must follow. Heuristics are **task-specific** and **non-transferable**.
+### 1.2 HEURISTIC — Structural Prior (≈ Architecture)
 
-```
-heuristic/
-└── rule.md            # Search rules & constraints
-```
-
-### 2.3 PARAM
-
-The **optimization target** — the "payload" that gets modified on each iteration.
+Defines the **inductive bias** — the structural assumption about what kind of solution space to search in. Just as CNNs encode spatial locality priors and RNNs encode sequential dependence priors, DAN HEURISTIC encodes task-specific structural knowledge.
 
 ```
-param/
-└── xxx                # Could be .py code, .md equations, .json config, etc.
+HEURISTIC encodes:
+- "Use class-based encapsulation" (prior: code should be object-oriented)
+- "Manually tune coefficients" (prior: human-in-the-loop search)
+- "Minimize cyclomatic complexity" (prior: simpler control flow is better)
 ```
 
-### 2.4 LOSS
+### 1.3 PARAM — Optimization Target (≈ Weights W)
 
-The **objective function** — produces feedback signals that drive HEURISTIC decisions.
-
-```
-loss/
-├── indicator.py       # Evaluation script / metrics computation
-└── target.md          # Goal description
-```
-
----
-
-## 3. Closed-Loop Workflow | 闭环工作流
+The **generalized parameter** — any adjustable entity that can be modified and re-evaluated. Unlike DL where PARAM is always a numeric tensor, here it can be:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                      Iteration Loop                     │
-├────────────────────────────────────────────────────────┤
-│                                                        │
-│  1. READ META          Read task goal & constraints    │
-│          ↓                                               │
-│  2. READ PARAM         Load current parameter state    │
-│          ↓                                               │
-│  3. CALCULATE LOSS     Run indicator to get feedback   │
-│          ↓                                               │
-│  4. APPLY HEURISTIC    Decide what to adjust & how     │
-│          ↓                                               │
-│  5. UPDATE PARAM       Apply modifications              │
-│          ↓                                               │
-│  6. CHECK STOP CRITERIA  → if not done, back to step 3 │
-│                                                        │
-└────────────────────────────────────────────────────────┘
+PARAM ∈ { code, coefficients, config files, prompts, hyperparameters, ... }
+```
+
+### 1.4 LOSS — Objective Function (≈ Loss)
+
+Quantifiable feedback signal that measures distance from META-defined goal. In gradient-based DL, LOSS drives gradient computation. In DAN, LOSS drives HEURISTIC-guided search.
+
+```
+LOSS: PARAM → ℝⁿ    (n-dimensional feedback vector)
 ```
 
 ---
 
-## 4. Task Instances | 任务实例
-
-### 4.1 01_LinearFunFit — Numerical Coefficient Fitting
+## 2. Formal Definition
 
 ```
-demo/01_LinearFunFit/
-├── META/loss/target/my_scatter.csv    # Scatter data points
-├── HEURISTIC/heuristic/rule.md       # "Manual tuning, ≤5 evaluations"
-├── PARAM/param/func.md                # y = ax + b ; y = ax² + bx + c
-└── LOSS/ (scatter comparison)          # Loss = sum((y_pred - y_actual)²)
-```
-
-### 4.2 02_CodeOptimize — Code Quality Optimization
-
-```
-demo/02_CodeOptimize/
-├── META/loss/target.md               # "Minimize all metrics"
-├── HEURISTIC/heuristic/rule.md       # "No auto-scripts, ≤1000 LOC delta"
-├── PARAM/param/demo.py               # Source code to optimize
-└── LOSS/loss/indicator.py            # Cyclomatic complexity, Halstead, MI...
-```
-
----
-
-## 5. Why This Structure? | 为什么是这个结构？
-
-| Property | Benefit |
-|----------|---------|
-| **Gradient-free** | Works for non-differentiable targets (code, discrete structures) |
-| **Agent-native** | Each component maps directly to LLM capabilities (read/write/reason) |
-| **Reproducible** | Every task is self-contained in its `demo/{name}/` folder |
-| **Composable** | New tasks inherit the same structure — only PARAM & LOSS change |
-| **Interpretable** | HEURISTIC is explicit human knowledge, not hidden in prompt engineering |
-
----
-
-## 6. Creating a New Task | 新建任务
-
-```bash
-cp -r demo/02_CodeOptimize demo/03_YourTask
-# Then edit:
-#   - META:      demo/03_YourTask/loss/target.md
-#   - HEURISTIC: demo/03_YourTask/heuristic/rule.md
-#   - PARAM:     demo/03_YourTask/param/your_param
-#   - LOSS:      demo/03_YourTask/loss/indicator.py (if applicable)
-```
-
-The agent will follow the same read→evaluate→adjust loop without any framework changes.
-
----
-
-## 7. Formal Specification | 形式化定义
-
-A DAN task is a 4-tuple:
-
-```
-Task := (META, HEURISTIC, PARAM₀, LOSS)
+DAN Task := (META, HEURISTIC, PARAM₀, LOSS)
 
 Where:
-  META      : Human-readable goal description
-  HEURISTIC : Set of constraints + search rules
+  META      : Framework config (task-agnostic)
+  HEURISTIC : Structural prior (shapes the search space)
   PARAM₀    : Initial parameter state
-  LOSS      : Function → ℝⁿ  (n-dimensional feedback vector)
+  LOSS      : Param → ℝⁿ  (feedback signal)
 
 Iteration i:
-  PARAMᵢ₊₁ = HEURISTIC(PARAMᵢ, LOSS(PARAMᵢ))
-  Stop if:  LOSS(PARAMᵢ₊₁) satisfies META criteria
-            OR iteration limit reached
+  feedback  = LOSS(PARAMᵢ)
+  PARAMᵢ₊₁ = HEURISTIC(PARAMᵢ, feedback, META)
+  Stop if:  convergence(PARAMᵢ, PARAMᵢ₊₁, META)
+            OR iteration_limit(META) reached
 ```
 
 ---
 
-*Built for LLM agents to perform structured, interpretable, non-gradient optimization.*
+## 3. Closed-Loop Workflow
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      DAN Optimization Loop                   │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  META contains: max_iterations, stopping_criteria, etc.     │
+│  HEURISTIC contains: search rules, priors, constraints      │
+│                                                              │
+│  1. READ HEURISTIC        Load structural prior & rules    │
+│          ↓                                                     │
+│  2. READ META             Load framework config            │
+│          ↓                                                     │
+│  3. READ PARAMᵢ           Load current parameter state    │
+│          ↓                                                     │
+│  4. COMPUTE LOSS(PARAMᵢ)  Evaluate feedback signal        │
+│          ↓                                                     │
+│  5. APPLY HEURISTIC       Decide adjustment strategy      │
+│          ↓                                                     │
+│  6. UPDATE PARAM           Modify PARAM → PARAMᵢ₊₁         │
+│          ↓                                                     │
+│  7. CHECK META criteria    → if not done, back to step 4    │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Task Instances
+
+### 4.1 01_LinearFunFit
+
+```
+META:
+  max_evaluations: 5
+  optimization_method: manual
+HEURISTIC:
+  - "Manually tune a, b, c coefficients"
+  - "Do not reference other equation's result"
+PARAM:  y = ax + b ; y = ax² + bx + c  (coefficients a, b, c)
+LOSS:   Σ(y_pred - y_actual)²  (scatter fitting error)
+```
+
+### 4.2 02_CodeOptimize
+
+```
+META:
+  max_loc_delta: 1000
+  optimization_method: manual (no auto-scripts)
+HEURISTIC:
+  - "Minimize cyclomatic complexity"
+  - "Reduce duplicate code"
+  - "Prefer encapsulation over global state"
+PARAM:  Python source code (e-commerce order system)
+LOSS:   (cyclomatic_complexity, halstead_difficulty, mi, duplicate_rate)
+```
+
+---
+
+## 5. Why This Abstraction?
+
+| Property | DL Analogy | DAN Benefit |
+|----------|-----------|-------------|
+| **Gradient-free** | N/A | Works on non-differentiable PARAM (code, discrete structures) |
+| **Interpretable priors** | Architecture design | HEURISTIC is explicit human knowledge, not buried in hyperparameters |
+| **Generalized PARAM** | Weights W | Can optimize any file/data, not just numeric tensors |
+| **Flexible LOSS** | Loss functions | Any quantifiable metric, single or multi-objective |
+
+---
+
+*Generalized end-to-end learning for LLM agents — same loop as training a neural network, but without gradients.*
