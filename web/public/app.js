@@ -1,5 +1,6 @@
 /**
  * DAN Web — Frontend App
+ * Handles SSE events from dan --json output
  */
 
 (function () {
@@ -7,7 +8,6 @@
 
   let es = null;
 
-  // ── Elements ────────────────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
   const presetSelect = $('presetSelect');
   const runBtn = $('runBtn');
@@ -16,13 +16,12 @@
   const outputBody = $('outputBody');
   const clearBtn = $('clearOutput');
 
-  // Textareas
   const metaInput = $('metaInput');
   const heuristicInput = $('heuristicInput');
   const paramInput = $('paramInput');
   const lossInput = $('lossInput');
 
-  // ── Tab Switching ───────────────────────────────────────────────────────────
+  // ── Tab Switching ────────────────────────────────────────────────────────────
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const card = btn.closest('.card-body');
@@ -44,13 +43,12 @@
       const task = await res.json();
 
       const firstOf = obj => { const v = Object.values(obj || {})[0]; return v != null ? v : ''; };
-
       metaInput.value = firstOf(task.META);
       heuristicInput.value = firstOf(task.HEURISTIC);
       paramInput.value = firstOf(task.PARAM);
 
-      const lossNames = Object.keys(task.LOSS || {});
       const lossVals = Object.values(task.LOSS || {});
+      const lossNames = Object.keys(task.LOSS || {});
       if (lossVals[0] !== undefined) {
         lossInput.value = lossVals[0];
         if (lossNames[0]) {
@@ -58,7 +56,6 @@
           if (pv) { pv.style.display = 'flex'; pv.querySelector('.file-preview-name').textContent = lossNames[0]; }
         }
       }
-
       setStatus('已加载: ' + presetSelect.options[presetSelect.selectedIndex].text);
     } catch (err) {
       setStatus('加载失败: ' + err.message);
@@ -85,11 +82,11 @@
     });
     preview?.querySelector('.file-preview-clear')?.addEventListener('click', () => {
       textarea.value = '';
-      preview.style.display = 'none';
+      if (preview) preview.style.display = 'none';
     });
   });
 
-  function loadFile(file, textarea, preview, _name) {
+  function loadFile(file, textarea, preview) {
     const reader = new FileReader();
     reader.onload = e => {
       textarea.value = e.target.result;
@@ -104,7 +101,7 @@
   clearBtn.addEventListener('click', clearOutput);
 
   async function runOptimization() {
-    if (isRunning()) return;
+    if (es) return;
     const meta = metaInput.value.trim();
     const heuristic = heuristicInput.value.trim();
     const param = paramInput.value.trim();
@@ -115,25 +112,28 @@
     clearOutput();
 
     try {
-      // POST to create task
       const createRes = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meta, heuristic, param, loss }),
       });
-      if (!createRes.ok) throw new Error((await createRes.json()).error || 'Server error');
+      if (!createRes.ok) throw new Error((await createRes.json()).error || 'Server error ' + createRes.status);
       const { runId } = await createRes.json();
 
-      // Connect SSE stream
       es = new EventSource(`/api/stream/${runId}`);
       es.onmessage = e => {
-        const event = JSON.parse(e.data);
-        handleEvent(event);
+        try {
+          const event = JSON.parse(e.data);
+          handleEvent(event);
+        } catch (err) {
+          appendLine('error', '❌ JSON解析失败: ' + e.data);
+        }
       };
       es.onerror = () => {
-        appendLine('error', '❌ 连接中断');
+        appendLine('error', '❌ SSE连接中断');
         setRunning(false);
         es.close();
+        es = null;
       };
 
     } catch (err) {
@@ -157,19 +157,79 @@
     setStatus(running ? '运行中...' : '');
   }
 
+  // ── Event Handlers ──────────────────────────────────────────────────────────
   function handleEvent(event) {
     switch (event.type) {
-      case 'show':  appendLine('show', event.text.trimEnd()); break;
-      case 'log':   appendLine('log-info', event.text.trimEnd()); break;
-      case 'error': appendLine('error', event.text.trimEnd()); break;
-      case 'done':
-        appendLine('done', '✅ ' + event.text);
+      case 'banner':
+        appendLine('header', `⚡ ${event.name}`);
+        break;
+
+      case 'meta':
+        appendLine('section', '📋 META — ' + (event.description || '').slice(0, 80));
+        break;
+
+      case 'loss_desc':
+        appendLine('section', '🎯 LOSS — ' + (event.text || '').slice(0, 100));
+        break;
+
+      case 'heuristic':
+        if (event.text) {
+          appendLine('section', '🧠 HEURISTIC');
+          for (const line of event.text.split('\n').slice(0, 10)) {
+            if (line.trim()) appendLine('show', '   ' + line.trim());
+          }
+        } else if (event.note === 'human_in_the_loop') {
+          appendLine('warn', '🧠 HEURISTIC: 人机协同模式，请参考上方规则手动调整PARAM');
+        }
+        break;
+
+      case 'iteration_start':
+        appendLine('section', `▓▓ Iteration ${event.iteration} ` + '▓'.repeat(30));
+        break;
+
+      case 'loss':
+        if (event.metrics) {
+          const entries = Object.entries(event.metrics);
+          appendLine('metric', '  📊 指标:');
+          for (const [k, v] of entries) {
+            const label = { loc: '代码行数', avg_cc: '平均圈复杂度', avg_func_loc: '平均函数行数',
+              dup_rate: '重复代码率', halstead_diff: 'Halstead难度', mi: '可维护性指数',
+              mse_eq1: '方程1 MSE', mse_eq2: '方程2 MSE' }[k] || k;
+            appendLine('metric', `     ${label}: ${typeof v === 'number' ? v.toFixed(2) : v}`);
+          }
+        }
+        break;
+
+      case 'param_update':
+        if (event.files && event.files.length > 0) {
+          appendLine('log', `  ⚙️  PARAM更新: ${event.files.join(', ')}`);
+        } else {
+          appendLine('log', '  ⚙️  PARAM: 无更新');
+        }
+        break;
+
+      case 'stop':
+        appendLine('done', `✅ 收敛停止: ${event.reason}`);
         setRunning(false);
         if (es) { es.close(); es = null; }
         break;
+
+      case 'done':
+        appendLine('done', `✅ 执行完成 — ${event.reason} (共${event.iterations}次迭代)`);
+        setRunning(false);
+        if (es) { es.close(); es = null; }
+        break;
+
+      case 'error':
+        appendLine('error', '❌ ' + (event.text || event.message || ''));
+        break;
+
+      default:
+        if (event.text) appendLine('log', String(event.text));
     }
   }
 
+  // ── Output Helpers ──────────────────────────────────────────────────────────
   function clearOutput() {
     outputBody.innerHTML = `<div class="output-placeholder">
       <svg class="placeholder-icon" viewBox="0 0 64 64" fill="none">
@@ -184,14 +244,14 @@
     const placeholder = outputBody.querySelector('.output-placeholder');
     if (placeholder) placeholder.remove();
 
-    const shouldScroll = outputBody.scrollHeight - outputBody.scrollTop - outputBody.clientHeight < 80;
+    const atBottom = outputBody.scrollHeight - outputBody.scrollTop - outputBody.clientHeight < 80;
 
     const div = document.createElement('div');
     div.className = `log-line log-${type}`;
     div.textContent = text;
     outputBody.appendChild(div);
 
-    if (shouldScroll) outputBody.scrollTop = outputBody.scrollHeight;
+    if (atBottom) outputBody.scrollTop = outputBody.scrollHeight;
   }
 
   function setStatus(msg) { runStatus.textContent = msg; }

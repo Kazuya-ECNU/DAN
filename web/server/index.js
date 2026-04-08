@@ -70,14 +70,25 @@ app.post('/api/run', (req, res) => {
     const pDir = path.join(tmpDir, 'PARAM');   fs.mkdirSync(pDir, { recursive: true });
     const lDir = path.join(tmpDir, 'LOSS');    fs.mkdirSync(lDir, { recursive: true });
 
-    if (meta)        fs.writeFileSync(path.join(mDir, 'task.yaml'), meta);
+    if (meta)        fs.writeFileSync(path.join(mDir, 'task.json'), meta);
     if (heuristic)   fs.writeFileSync(path.join(hDir, 'rules.md'), heuristic);
-    if (param)       fs.writeFileSync(path.join(pDir, 'content'), param);
+    if (param) {
+      // Infer filename: Python code → demo.py, equations → func.md, otherwise → content
+      const firstLine = param.trimStart().split('\n')[0];
+      let paramFile = 'content';
+      if (/^#\s*!?python|^#!/ .test(firstLine) || /^(def |class |import |from )/.test(firstLine)) {
+        paramFile = 'demo.py';
+      } else if (/^1\.\s*y\s*=|^y\s*=|^f\(/.test(firstLine)) {
+        paramFile = 'func.md';
+      }
+      fs.writeFileSync(path.join(pDir, paramFile), param);
+    }
     if (loss) {
       if (loss.trimStart().startsWith('def ') || loss.trimStart().startsWith('import ')) {
         fs.writeFileSync(path.join(lDir, 'indicator.py'), loss);
-      } else if (/^\d[\d,.\s-]+[,]\s*[\d]/.test(loss.trim())) {
-        fs.writeFileSync(path.join(lDir, 'data.csv'), loss);
+      } else if (/^x,y$|^[\d-]/.test(loss.trim().split('\n')[0])) {
+        // CSV data: first line is 'x,y' (header) or starts with digit/hyphen
+        fs.writeFileSync(path.join(lDir, 'scatter.csv'), loss);
       } else {
         fs.writeFileSync(path.join(lDir, 'target.md'), loss);
       }
@@ -131,20 +142,30 @@ app.get('/api/stream/:runId', (req, res) => {
     if (stopped) return;
     if (code !== 0) send('error', `dan.show exited ${code}`);
 
-    // Run: python3 -m dan <tmpDir> --quiet
-    const runner = spawn('python3', ['-m', 'dan', tmpDir, '--quiet'], { cwd: DAN_ROOT, env: { ...process.env, PYTHONPATH: DAN_ROOT } });
+    // Run: python3 -m dan <tmpDir> --json  (SSE-friendly JSON Lines)
+    const runner = spawn('python3', ['-m', 'dan', tmpDir, '--json'], { cwd: DAN_ROOT, env: { ...process.env, PYTHONPATH: DAN_ROOT } });
 
     runner.stdout.on('data', d => {
       if (stopped) return;
-      for (const l of d.toString().split('\n')) {
-        if (l.trim()) send('log', l.trimEnd());
+      const lines = d.toString().split('\n');
+      for (const raw of lines) {
+        const l = raw.trim();
+        if (!l) continue;
+        try {
+          const event = JSON.parse(l);
+          // Forward JSON event as SSE
+          res.write(`data:${JSON.stringify(event)}\n\n`);
+        } catch {
+          // Fallback: plain text line
+          if (l) send('log', l);
+        }
       }
     });
     runner.stderr.on('data', d => send('error', d.toString()));
 
     runner.on('close', code => {
       if (stopped) return;
-      send('done', `执行完成，退出码: ${code}`);
+      res.write(`data:${JSON.stringify({ type: 'done', code })}\n\n`);
       res.end();
       cleanup();
     });

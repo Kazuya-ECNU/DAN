@@ -9,6 +9,7 @@ Usage:
     result = runner.run()
 """
 
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -224,3 +225,86 @@ class Runner:
                 print(f"    {k}: {v:.4f}")
             else:
                 print(f"    {k}: {v}")
+
+
+# ── JSON Runner (for SSE streaming) ────────────────────────────────────────────
+
+def _jl(event_type: str, **data):
+    """Print a JSON Line to stdout for SSE streaming."""
+    print(json.dumps({"type": event_type, **data}, ensure_ascii=False), flush=True)
+
+
+class JSONRunner(Runner):
+    """
+    JSON-line output runner for SSE/web streaming.
+    Every event is printed as a separate JSON Line.
+    """
+    def run(self) -> OptimizationResult:
+        strategy = self.heuristic.get_strategy()
+        evaluator = self.loss.get_evaluator()
+        param_content = self.param.load()
+
+        if not param_content:
+            _jl("error", text="PARAM directory is empty")
+            return OptimizationResult(meta=self.meta)
+
+        _jl("banner", name=self.meta.name or self.task_dir.name)
+        _jl("meta", description=self.meta.description,
+            max_iterations=self.meta.max_iterations,
+            output_dir=self.meta.output_dir)
+
+        loss_desc = self.loss.get_description()
+        if loss_desc:
+            _jl("loss_desc", text=loss_desc)
+
+        heuristic_rules = self.heuristic.get_human_rules()
+        if heuristic_rules:
+            _jl("heuristic", text=heuristic_rules)
+
+        result = OptimizationResult(meta=self.meta)
+
+        for i in range(1, self.meta.max_iterations + 1):
+            _jl("iteration_start", iteration=i)
+            loss_result = evaluator.evaluate(param_content, self.task_dir)
+            _jl("loss", metrics=loss_result)
+
+            stop, reason = self._check_stop(loss_result, i)
+            if stop:
+                _jl("stop", reason=reason, converged=True)
+                result.converged = True
+                result.stopping_reason = reason
+                result.final_loss = loss_result
+                break
+
+            strategy_type = type(strategy).__name__
+            if isinstance(strategy, (PythonHeuristicStrategy, YAMLHeuristicStrategy)):
+                updates = strategy.decide(i, param_content, loss_result)
+            elif isinstance(strategy, MarkdownHeuristicStrategy):
+                updates = {}
+                _jl("heuristic", strategy=strategy_type, note="human_in_the_loop")
+            else:
+                updates = {}
+
+            if updates:
+                _jl("param_update", files=list(updates.keys()))
+                param_content = self._apply_updates(param_content, updates)
+                self.param.save(param_content, output_dir=str(self.meta.output_dir))
+            else:
+                _jl("param_update", files=[], note="no_changes_or_human_loop")
+
+            result.iterations.append(IterationState(
+                iteration=i,
+                param_snapshot=param_content.copy(),
+                loss_result=loss_result.copy(),
+                param_updates=updates,
+            ))
+
+        if not result.converged:
+            result.stopping_reason = f"Max iterations ({self.meta.max_iterations}) reached"
+            result.final_loss = result.iterations[-1].loss_result if result.iterations else {}
+
+        _jl("done", reason=result.stopping_reason, iterations=len(result.iterations))
+        result.save(self.output_dir)
+
+        self.result = result
+        return result

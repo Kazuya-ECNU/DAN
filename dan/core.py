@@ -6,6 +6,7 @@ The framework manages the loop; users only define the four components.
 """
 
 import json
+import re
 import importlib.util
 from pathlib import Path
 from typing import Any, Optional, Dict, List
@@ -414,49 +415,115 @@ class CSVLossEvaluator(LossEvaluator):
 
     def evaluate(self, param_content: Dict[str, str], work_dir: Path) -> Dict[str, float]:
         """
-        Evaluate: given func.md coefficients and scatter.csv data,
-        compute MSE. Expects param_content to contain 'func.md' with
-        coefficient definitions.
+        Evaluate: given func.md equations and scatter.csv data, compute MSE.
+        Handles: y = ax + b  (linear) and y = ax^2 + bx + c (quadratic).
+        Coefficients default to 0.0 — the agent must update them in PARAM.
         """
-        import re
-        import math
-
-        # Parse scatter data
+        # Parse scatter data (skip header row if present)
         scatter = []
         with open(self.csv_path) as f:
+            first = f.readline().strip()
+            if not re.match(r'^[\d.-]+,[\d.-]+$', first):
+                # Header row: skip it
+                pass
+            else:
+                parts = first.split(',')
+                try:
+                    scatter.append((float(parts[0]), float(parts[1])))
+                except ValueError:
+                    pass
             for line in f:
-                parts = line.strip().split(",")
+                parts = line.strip().split(',')
                 if len(parts) >= 2:
                     try:
                         scatter.append((float(parts[0]), float(parts[1])))
                     except ValueError:
                         continue
 
-        # Parse func.md to extract equations and coefficients
+        if not scatter:
+            return {"mse_eq1": float('inf'), "mse_eq2": float('inf')}
+
+        # Parse equations from func.md
         func_text = param_content.get("func.md", "")
-        equations = re.findall(r"y\s*=\s*([^,\n]+)", func_text)
+        equations = re.findall(r'y\s*=\s*([^,\n]+)', func_text)
 
         results = {}
         for i, eq in enumerate(equations[:2], 1):
-            total_error = 0.0
-            # Simple eval: substitute x values and compare
-            try:
-                for x, y_actual in scatter:
-                    y_pred = eval(eq, {"x": x, **self._extract_coeffs(eq)})
-                    total_error += (y_pred - y_actual) ** 2
-                mse = total_error / len(scatter) if scatter else 0
-                results[f"mse_eq{i}"] = mse
-            except Exception:
-                results[f"mse_eq{i}"] = float("inf")
+            mse = self._compute_mse(eq.strip(), scatter)
+            results[f"mse_eq{i}"] = mse
 
         return results
 
-    def _extract_coeffs(self, eq: str) -> Dict[str, float]:
-        """Extract coefficient names from equation string."""
-        import re
-        names = set(re.findall(r"\b[a-z]\b", eq)) - {"x", "y"}
-        return {n: 0.0 for n in names}
 
+    def _to_python_expr(self, eq: str) -> str:
+        """
+        Convert mathematical equation to valid Python expression.
+        Handles: ax, ax^2, 0.67x, 0.067x^2, a*x, etc.
+        Input:  'ax + b' or 'ax^2 + bx + c'
+        Output: 'a*x + b' or 'a*x**2 + b*x + c'
+        """
+        eq = eq.strip().replace('^', '**')
+        result = []
+        i = 0
+        while i < len(eq):
+            ch = eq[i]
+            if ch.isspace():
+                i += 1; continue
+            if ch in '+-':
+                result.append(ch); i += 1; continue
+            if ch == '*':
+                result.append('*'); i += 1; continue
+            # Scan term
+            j = i
+            while j < len(eq) and eq[j] not in '+-* ':
+                j += 1
+            term = eq[i:j]
+            i = j
+            if not term:
+                continue
+            if '*' in term or '/' in term or '**' in term:
+                result.append(term); continue
+            # Implicit multiplication: ax, ax^2, 0.67x, bx
+            m = re.match(r'^([a-z][a-z0-9]*)(x(?:\*\*\d+)?)$', term)
+            if m:
+                result.append(f'{m.group(1)}*{m.group(2) or "x"}'); continue
+            m2 = re.match(r'^([0-9]+(?:\.[0-9]+)?)(x(?:\*\*\d+)?)$', term)
+            if m2:
+                result.append(f'{m2.group(1)}*{m2.group(2) or "x"}'); continue
+            result.append(term)
+        return ''.join(result)
+
+    def _extract_coeffs(self, eq: str) -> set:
+        """Extract coefficient names from equation (single lowercase letters, not x/y)."""
+        eq_clean = re.sub(r'^y\s*=', '', eq)
+        names = set()
+        i = 0
+        while i < len(eq_clean):
+            ch = eq_clean[i]
+            if ch.isalpha() and ch not in 'xy':
+                before = eq_clean[i-1] if i > 0 else ' '
+                after = eq_clean[i+1] if i < len(eq_clean) - 1 else ' '
+                if not (before.isalpha() or before.isdigit()):
+                    names.add(ch)
+            i += 1
+        return names
+
+    def _compute_mse(self, eq: str, scatter: list) -> float:
+        """Compute MSE for an equation against scatter data."""
+        names = self._extract_coeffs(eq)
+        coeffs = {n: 0.0 for n in names}
+        try:
+            eq_py = self._to_python_expr(eq)
+        except Exception:
+            return float('inf')
+        total = 0.0
+        for x, y_actual in scatter:
+            try:
+                y_pred = eval(eq_py, {'x': x, **coeffs})
+                total += (y_pred - y_actual) ** 2
+            except Exception:
+                return float('inf')
+        return total / len(scatter) if scatter else 0.0
 
 class TextLossEvaluator(LossEvaluator):
     """Text-based loss: returns 0 (human evaluates manually)."""
