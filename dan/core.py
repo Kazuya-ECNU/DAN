@@ -5,7 +5,7 @@ Each task is a 4-tuple: (META, HEURISTIC, PARAM₀, LOSS)
 The framework manages the loop; users only define the four components.
 """
 
-import os
+import json
 import importlib.util
 from pathlib import Path
 from typing import Any, Optional, Dict, List
@@ -34,12 +34,12 @@ class META:
 
     @classmethod
     def load(cls, path: str | Path) -> "META":
-        """Load META from a directory or YAML/JSON file."""
+        """Load META from a directory or JSON file."""
         p = Path(path)
         if p.is_file():
             return cls._load_file(p)
-        # Directory-based: look for task.yaml or meta.yaml
-        for fname in ("task.yaml", "meta.yaml", "META.yaml"):
+        # Directory-based: prefer JSON (stdlib), fall back to YAML
+        for fname in ("task.json", "meta.json", "META.json"):
             fp = p / fname
             if fp.exists():
                 return cls._load_file(fp)
@@ -47,9 +47,8 @@ class META:
 
     @classmethod
     def _load_file(cls, fp: Path) -> "META":
-        import yaml
         with open(fp) as f:
-            data = yaml.safe_load(f) or {}
+            data = json.load(f)
         return cls(
             name=data.get("name", fp.parent.name),
             description=data.get("description", ""),
@@ -212,10 +211,9 @@ class YAMLHeuristicStrategy(HeuristicStrategy):
     Rules specify: condition → action (what to change in PARAM).
     """
     def __init__(self, rules: List[Dict]):
-        import yaml
         self.rules = []
         for r in rules:
-            data = yaml.safe_load(r["content"]) or {}
+            data = json.loads(r["content"]) if r["content"].strip().startswith("{") else {}
             if isinstance(data, list):
                 self.rules.extend(data)
             elif isinstance(data, dict):
@@ -403,11 +401,9 @@ class PythonLossEvaluator(LossEvaluator):
 class YAMLLossEvaluator(LossEvaluator):
     """YAML-based loss: defines metrics and comparison logic."""
     def __init__(self, items: List[Dict]):
-        import yaml
-        self.config = yaml.safe_load(items[0]["content"]) or {}
+        self.config = json.loads(items[0]["content"]) if items else {}
 
     def evaluate(self, param_content: Dict[str, str], work_dir: Path) -> Dict[str, float]:
-        # YAML evaluator delegates to Python logic or computes analytically
         return {}
 
 

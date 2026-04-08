@@ -30,7 +30,7 @@ DAN/
 │
 ├── demo/                         # Task instances
 │   ├── 01_LinearFunFit/
-│   │   ├── META/task.yaml        # max_iterations, stop_if, output_dir
+│   │   ├── META/task.json        # max_iterations, stop_if, output_dir
 │   │   ├── HEURISTIC/rules.md    # Human-readable search strategy
 │   │   ├── PARAM/func.md         # Equations to fit: y=ax+b, y=ax²+bx+c
 │   │   ├── LOSS/scatter.csv      # Target data
@@ -38,12 +38,12 @@ DAN/
 │   │
 │   └── 02_CodeOptimize/
 │       ├── 01_loss1/
-│       │   ├── META/task.yaml
+│       │   ├── META/task.json
 │       │   ├── HEURISTIC/rules.md
 │       │   ├── PARAM/demo.py
 │       │   └── results/
 │       └── 02_loss3/
-│           ├── META/task.yaml
+│           ├── META/task.json
 │           ├── HEURISTIC/rules.md
 │           ├── PARAM/demo.py     # E-commerce order system (to optimize)
 │           ├── LOSS/
@@ -62,7 +62,7 @@ DAN/
 ### 3.1 META — Task Configuration
 
 ```yaml
-# demo/XX/META/task.yaml
+# demo/XX/META/task.json
 name: CodeOptimize-02_loss3
 description: >
   Optimize Python code quality metrics.
@@ -88,7 +88,7 @@ Stored in `HEURISTIC/` directory. Supported formats (priority order):
 | Format | File | Strategy | Use Case |
 |--------|------|----------|----------|
 | Python | `.py` | `decide(iteration, param_snapshot, loss_result) → {filename: new_content}` | Full programmability |
-| YAML | `.yaml` | Declarative `if → then` rules | Structured strategies |
+| YAML | `.json` | Declarative `if → then` rules | Structured strategies |
 | Markdown | `.md` | Human-readable guidelines | Human-in-the-loop tasks |
 
 ```python
@@ -165,7 +165,7 @@ Runs the full iteration loop (for fully automated tasks where HEURISTIC is a `.p
 ┌─────────────────────────────────────────────────────────────┐
 │  Agent runs: python -m dan.show <task_dir>                  │
 │                                                             │
-│  → Reads META/task.yaml       → Understands goal + config  │
+│  → Reads META/task.json       → Understands goal + config  │
 │  → Reads HEURISTIC/rules.md   → Understands how to search  │
 │  → Reads PARAM/*              → Sees the thing to optimize  │
 │  → Reads LOSS/*               → Understands how to measure  │
@@ -199,7 +199,7 @@ Then edit the four components:
 
 ```
 demo/03_YourTask/
-├── META/task.yaml         ← Task name, max_iterations, stop_if
+├── META/task.json         ← Task name, max_iterations, stop_if
 ├── HEURISTIC/rules.md     ← Search strategy
 ├── PARAM/                 ← Your optimizable files
 └── LOSS/                  ← Your evaluation logic

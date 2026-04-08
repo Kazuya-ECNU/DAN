@@ -30,7 +30,7 @@ DAN/
 │
 ├── demo/                          # 任务实例
 │   ├── 01_LinearFunFit/
-│   │   ├── META/task.yaml
+│   │   ├── META/task.json
 │   │   ├── HEURISTIC/rules.md
 │   │   ├── PARAM/func.md
 │   │   ├── LOSS/scatter.csv
@@ -38,7 +38,7 @@ DAN/
 │   └── 02_CodeOptimize/
 │       ├── 01_loss1/
 │       └── 02_loss3/
-│           ├── META/task.yaml
+│           ├── META/task.json
 │           ├── HEURISTIC/rules.md
 │           ├── PARAM/demo.py
 │           ├── LOSS/
@@ -54,7 +54,7 @@ DAN/
 ### META — 任务配置
 
 ```yaml
-# demo/XX/META/task.yaml
+# demo/XX/META/task.json
 name: CodeOptimize-02_loss3
 description: 根据代码质量指标优化代码
 max_iterations: 10
@@ -77,7 +77,7 @@ stop_if: "loss.mi >= 65"   # 可选：早停条件
 | 格式 | 文件类型 | 策略类型 | 适用场景 |
 |------|---------|---------|---------|
 | Python | `.py` | `decide(iteration, param_snapshot, loss_result) → {f: c}` | 完全可编程 |
-| YAML | `.yaml` | 声明式 `if → then` 规则 | 结构化策略 |
+| YAML | `.json` | 声明式 `if → then` 规则 | 结构化策略 |
 | Markdown | `.md` | 人类可读指南 | 人机协同任务 |
 
 ### PARAM — 优化主体
@@ -112,7 +112,7 @@ python -m dan demo/02_CodeOptimize/02_loss3 [--quiet] [--max-iter N]
 ```bash
 cp -r demo/02_CodeOptimize/02_loss3 demo/03_YourTask
 # 编辑:
-#   META/task.yaml      ← 任务配置
+#   META/task.json      ← 任务配置
 #   HEURISTIC/rules.md  ← 搜索策略
 #   PARAM/              ← 待优化文件
 #   LOSS/               ← 评估逻辑

@@ -1,0 +1,6 @@
+{
+  "name": "CodeOptimize-01_loss1",
+  "description": "Optimize code quality metrics: high cohesion, low coupling. Target: make code highly cohesive and loosely coupled.",
+  "max_iterations": 10,
+  "output_dir": "results"
+}

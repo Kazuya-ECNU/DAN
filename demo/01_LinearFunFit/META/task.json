@@ -1,0 +1,7 @@
+{
+  "name": "LinearFunFit",
+  "description": "Fit two equations y=ax+b and y=ax²+bx+c to scatter data. Tune coefficients a, b, c to minimize MSE.",
+  "max_iterations": 5,
+  "output_dir": "results",
+  "stop_if": "loss.mse_eq1 < 0.1 AND loss.mse_eq2 < 0.1"
+}
