@@ -156,4 +156,37 @@ def analyze_code_quality(file_path="../param/demo.py"):
 
 
 if __name__ == "__main__":
-    analyze_code_quality("../param/demo.py")
+    import sys, json
+    # Support framework invocation: python indicator.py /path/to/param_dir
+    path = sys.argv[1] + "/demo.py" if len(sys.argv) > 1 else "../param/demo.py"
+    result = analyze_code_quality(path)
+    # Print machine-readable JSON summary at the end (for framework parsing)
+    # Re-parse to get numeric values for JSON output
+    try:
+        with open(path) as f:
+            code = f.read()
+        lines = [l for l in code.splitlines() if l.strip() and not l.strip().startswith("#")]
+        loc = len(lines)
+        tree = ast.parse(code)
+        ParentNodeVisitor().visit(tree)
+        func_cc_list, func_loc_list = [], []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                func_loc_list.append(node.end_lineno - node.lineno + 1)
+                func_cc_list.append(calculate_cyclomatic_complexity(node))
+        avg_cc = sum(func_cc_list)/len(func_cc_list) if func_cc_list else 0
+        avg_func_loc = sum(func_loc_list)/len(func_loc_list) if func_loc_list else 0
+        dup_rate = calculate_duplicate_rate(lines)
+        halstead_vol, halstead_diff, _ = calculate_halstead(code)
+        mi = calculate_maintainability_index(halstead_vol, avg_cc, loc)
+        json_output = {
+            "loc": loc,
+            "avg_cc": round(avg_cc, 2),
+            "avg_func_loc": round(avg_func_loc, 1),
+            "dup_rate": round(dup_rate, 1),
+            "halstead_diff": round(halstead_diff, 1),
+            "mi": round(mi, 1)
+        }
+        print(json.dumps({"metrics": json_output}))
+    except Exception:
+        pass

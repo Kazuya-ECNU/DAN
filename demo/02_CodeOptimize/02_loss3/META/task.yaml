@@ -1,0 +1,7 @@
+name: CodeOptimize-02_loss3
+description: >
+  Optimize Python code using industry-standard quality metrics:
+  cyclomatic complexity, Halstead metrics, maintainability index.
+  Run: python -m dan demo/02_CodeOptimize/02_loss3
+max_iterations: 10
+output_dir: results
