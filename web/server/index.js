@@ -29,7 +29,7 @@ const runs = new Map();
 function inferParamFile(content) {
   if (!content) return 'content';
   const first = content.trimStart().split('\n')[0];
-  if (/^(def |class |import |from |#.*python|^#!/)/.test(first)) return 'demo.py';
+  if (/^(def |class |import |from |#.*python|^\#\!\/)/.test(first)) return 'demo.py';
   if (/^(1\.\s*y\s*=|^y\s*=|^f\()/.test(first)) return 'func.md';
   return 'content';
 }
