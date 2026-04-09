@@ -302,22 +302,34 @@ class LOSS:
     def get_evaluator(self) -> "LossEvaluator":
         """
         Build the appropriate evaluator based on loss/ files present.
-        Priority: indicator.py > .yaml > .csv > target.md
+        Priority: Python content > .csv > .md > .yaml
+        Detection is content-based (not just extension), so any file
+        whose content starts with def/import is treated as a Python indicator.
         """
         items = self.load()
 
+        # Python: either .py file OR content starts with def / import
         py_items = [i for i in items if i["type"] == ".py" and i["name"] not in ("__init__",)]
+        if not py_items:
+            py_items = [i for i in items if i["content"] and
+                        i["content"].lstrip().startswith(("def ", "import ", "from "))]
         if py_items:
             return PythonLossEvaluator(py_items)
 
+        # CSV data: either .csv file OR content matches x,y / digit pattern
+        csv_items = [i for i in items if i["type"] == ".csv"]
+        if not csv_items:
+            csv_items = [i for i in items if i["content"] and
+                        re.match(r'^x,y$|^[\d-]', i["content"].strip().split('\n')[0])]
+        if csv_items:
+            return CSVLossEvaluator(csv_items)
+
+        # YAML
         yaml_items = [i for i in items if i["type"] in (".yaml", ".yml")]
         if yaml_items:
             return YAMLLossEvaluator(yaml_items)
 
-        csv_items = [i for i in items if i["type"] == ".csv"]
-        if csv_items:
-            return CSVLossEvaluator(csv_items)
-
+        # Markdown / text
         md_items = [i for i in items if i["type"] == ".md"]
         if md_items:
             return TextLossEvaluator(md_items)
