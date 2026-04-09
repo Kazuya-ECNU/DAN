@@ -160,6 +160,18 @@
   // ── Event Handlers ──────────────────────────────────────────────────────────
   function handleEvent(event) {
     switch (event.type) {
+      case 'echo_banner':
+        appendLine('echo-banner', event.text || '');
+        break;
+
+      case 'section':
+        appendLine('section', event.text || '');
+        break;
+
+      case 'echo':
+        appendLine('echo', (event.label ? `[${event.label}] ` : '') + (event.text || ''));
+        break;
+
       case 'banner':
         appendLine('header', `⚡ ${event.name}`);
         break;

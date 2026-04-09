@@ -409,6 +409,8 @@ select { font-family: inherit; }
 .log-line.log-error   { color: #FF453A; }
 .log-line.log-done    { color: #32D74B; font-weight: 600; }
 .log-line.log-section { color: #BF5AF2; font-weight: 600; }
+.log-line.log-echo-banner { color: #5856D6; font-weight: 700; font-size: 11px; letter-spacing: 1px; padding: 6px 20px 2px; background: rgba(88,86,214,0.06); }
+.log-line.log-echo { color: #AEAEB2; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; padding: 1px 20px; }
 
 /* ── Loading dots ─────────────────────────────────────────────────────────── */
 .loading-dots::after {
