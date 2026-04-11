@@ -28,7 +28,7 @@ tasks: dict[str, dict] = {}
 
 
 # ── SSE mock data generator ──────────────────────────────────────────────────
-async def mock_stream(task_id: str, meta: str, heuristic: str, param: str, loss: str, res: fastapi.Response):
+async def mock_stream(task_id: str, meta: str, heuristic: str, param: str, loss: str):
     """Simulate dan --json streaming output with realistic delays."""
     await asyncio.sleep(0.05)
 
