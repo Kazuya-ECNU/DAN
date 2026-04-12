@@ -15,12 +15,10 @@ import fastapi.responses as responses
 import uvicorn
 from fastapi import FastAPI, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 app = FastAPI(title="DAN Web", version="0.1.0")
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # web/
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # ── Task store: task_id → {queue, producer_started, finished} ────────────────
@@ -127,8 +125,8 @@ async def start_task_producer(task_id: str, meta: str, heuristic: str, param: st
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 @app.get("/")
-async def root(request: fastapi.Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def root():
+    return responses.FileResponse(str(BASE_DIR / "templates" / "index.html"))
 
 
 @app.post("/api/run")
